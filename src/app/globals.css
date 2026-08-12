@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+/*
+  PsychLib design system.
+  Brand: Fresno State cardinal RED dominant, deep navy secondary, on warm
+  academic neutrals. Headings in Crimson Pro (scholarly serif); body in
+  Atkinson Hyperlegible (built for legibility, apt for a psych program).
+*/
+:root {
+  --background: #faf7f2;   /* warm ivory */
+  --surface: #ffffff;
+  --surface-2: #f3ede4;
+  --foreground: #1b1512;
+  --muted: #6d635b;
+  --border: #e8dfd3;
+  --border-strong: #d8ccbd;
+
+  --primary: #db0032;      /* official Fresno State cardinal */
+  --primary-hover: #b80029;
+  --primary-fg: #ffffff;
+  --brand: #db0032;
+
+  --navy: #142a56;         /* Fresno State navy (matches logo) */
+  --navy-fg: #ffffff;
+
+  --header: #14284b;       /* navy chrome bar */
+  --header-fg: #ffffff;
+  --header-muted: #b7c4dc;
+  --header-border: rgba(255, 255, 255, 0.14);
+
+  --accent-soft: #fbe9ec;  /* red tint chips/badges */
+  --navy-soft: #e7eef7;
+  --ring: rgba(200, 16, 46, 0.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #161010;
+    --surface: #1e1613;
+    --surface-2: #281d19;
+    --foreground: #f5efe9;
+    --muted: #a89b8f;
+    --border: #362a24;
+    --border-strong: #46372f;
+
+    --primary: #ff415c;
+    --primary-hover: #ff627a;
+    --primary-fg: #1a0c0e;
+    --brand: #ff415c;
+
+    --navy: #8fb4e6;
+    --navy-fg: #0b1626;
+
+    --header: #0f1d3a;
+    --header-fg: #f5efe9;
+    --header-muted: #9fb0cf;
+    --header-border: rgba(255, 255, 255, 0.1);
+
+    --accent-soft: #3a161b;
+    --navy-soft: #16233a;
+    --ring: rgba(255, 65, 92, 0.4);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-brand: var(--brand);
+  --color-navy: var(--navy);
+  --color-navy-fg: var(--navy-fg);
+  --color-header: var(--header);
+  --color-header-fg: var(--header-fg);
+  --color-header-muted: var(--header-muted);
+  --color-accent-soft: var(--accent-soft);
+  --color-navy-soft: var(--navy-soft);
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-serif), Georgia, serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.scroll-slim::-webkit-scrollbar { width: 8px; }
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
+/* Subtle cardinal top-edge accent used on the header. */
+.brand-rule {
+  background: linear-gradient(90deg, var(--brand), #8a0020);
+}
