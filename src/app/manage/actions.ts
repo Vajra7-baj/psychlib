@@ -114,7 +114,10 @@ export interface BrokenLink {
 export interface LinkCheckResult {
   ok: boolean;
   error?: string;
+  /** How many links were probed in this batch. */
   checked: number;
+  /** Total links in the library, so the caller can show progress. */
+  total: number;
   broken: BrokenLink[];
 }
 
@@ -123,7 +126,7 @@ async function probe(url: string): Promise<string | null> {
   // do NOT flag 401/403/405/429 — those usually mean the site blocks bots,
   // not that the link is dead (avoids false positives on journal sites).
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
+  const timer = setTimeout(() => controller.abort(), 6000);
   try {
     let res = await fetch(url, {
       method: "HEAD",
@@ -147,15 +150,24 @@ async function probe(url: string): Promise<string | null> {
   }
 }
 
-export async function checkLinks(): Promise<LinkCheckResult> {
+/**
+ * Probe a slice of the library's links. The caller walks through the
+ * collection a batch at a time so a large library can't outrun the
+ * platform's function time limit, and so progress can be shown.
+ */
+export async function checkLinks(
+  offset = 0,
+  limit = 12,
+): Promise<LinkCheckResult> {
   const supabase = await createClient();
   if (!(await requireFaculty(supabase)))
-    return { ok: false, error: "Faculty only.", checked: 0, broken: [] };
+    return { ok: false, error: "Faculty only.", checked: 0, total: 0, broken: [] };
 
   const { data } = await supabase
     .from("resources")
     .select("id, title, url, doi")
-    .eq("status", "approved");
+    .eq("status", "approved")
+    .order("created_at", { ascending: true });
 
   const targets = (data ?? [])
     .map((r) => {
@@ -168,17 +180,13 @@ export async function checkLinks(): Promise<LinkCheckResult> {
     })
     .filter((t): t is { id: string; title: string; url: string } => !!t);
 
-  const broken: BrokenLink[] = [];
-  const CONCURRENCY = 6;
-  for (let i = 0; i < targets.length; i += CONCURRENCY) {
-    const batch = targets.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(
-      batch.map(async (t) => ({ t, status: await probe(t.url) })),
-    );
-    for (const { t, status } of results) {
-      if (status) broken.push({ ...t, status });
-    }
-  }
+  const slice = targets.slice(offset, offset + limit);
+  const results = await Promise.all(
+    slice.map(async (t) => ({ t, status: await probe(t.url) })),
+  );
+  const broken = results
+    .filter((r) => r.status)
+    .map(({ t, status }) => ({ ...t, status: status as string }));
 
-  return { ok: true, checked: targets.length, broken };
+  return { ok: true, checked: slice.length, total: targets.length, broken };
 }

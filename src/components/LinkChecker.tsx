@@ -9,12 +9,36 @@ export default function LinkChecker() {
   const [status, setStatus] = useState<"idle" | "checking" | "done">("idle");
   const [broken, setBroken] = useState<BrokenLink[]>([]);
   const [checked, setChecked] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
+  // Walk the library a batch at a time so a big collection can't exceed the
+  // server's time limit, and so progress is visible while it runs.
   async function run() {
     setStatus("checking");
-    const res = await checkLinks();
-    setBroken(res.broken);
-    setChecked(res.checked);
+    setBroken([]);
+    setChecked(0);
+    setTotal(0);
+    setError(null);
+
+    const BATCH = 12;
+    let offset = 0;
+    const found: BrokenLink[] = [];
+
+    for (;;) {
+      const res = await checkLinks(offset, BATCH);
+      if (!res.ok) {
+        setError(res.error ?? "Could not check links.");
+        setStatus("idle");
+        return;
+      }
+      found.push(...res.broken);
+      offset += res.checked;
+      setBroken([...found]);
+      setChecked(offset);
+      setTotal(res.total);
+      if (res.checked === 0 || offset >= res.total) break;
+    }
     setStatus("done");
   }
 
@@ -32,14 +56,26 @@ export default function LinkChecker() {
         {status === "checking" && (
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-fg border-t-transparent" />
         )}
-        {status === "checking" ? "Checking…" : "Check links"}
+        {status === "checking"
+          ? total
+            ? `Checking ${checked} of ${total}…`
+            : "Checking…"
+          : "Check links"}
       </button>
+
+      {error && (
+        <p className="rounded-lg border border-accent-soft bg-accent-soft px-3 py-2 text-sm text-primary">
+          {error}
+        </p>
+      )}
 
       {status === "done" &&
         (broken.length === 0 ? (
           <p className="inline-flex items-center gap-1.5 text-sm font-medium text-navy">
             <CheckIcon className="h-4 w-4" />
-            All {checked} links look healthy.
+            {checked === 0
+              ? "No links to check yet."
+              : `All ${checked} links look healthy.`}
           </p>
         ) : (
           <div className="flex flex-col gap-2">

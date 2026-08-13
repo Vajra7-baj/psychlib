@@ -15,6 +15,7 @@ import {
   normalizeAuthors,
   type ResourceMeta,
 } from "@/lib/metadata";
+import { removeUploadedPdf, uploadPdf, validatePdf } from "@/lib/upload";
 
 const initialState: ResourceFormState = { ok: false };
 
@@ -73,6 +74,14 @@ export default function ResourceForm({
   const [fileName, setFileName] = useState<string | null>(
     initial?.fileName ?? null,
   );
+  // The file is uploaded to Storage as soon as it's chosen, so only its path
+  // travels through the Server Action. See lib/upload.ts for why.
+  const [uploaded, setUploaded] = useState<{
+    path: string;
+    size: number;
+    text: string;
+  } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [dup, setDup] = useState<{ id: string; title: string } | null>(null);
 
@@ -102,7 +111,7 @@ export default function ResourceForm({
     "idle" | "loading" | "error" | "done"
   >("idle");
   const [analysis, setAnalysis] = useState<
-    "idle" | "reading" | "doi" | "doi-only" | "meta" | "none"
+    "idle" | "uploading" | "reading" | "doi" | "doi-only" | "meta" | "none"
   >("idle");
 
   /**
@@ -141,16 +150,39 @@ export default function ResourceForm({
     }
   }
 
-  /** Foolproof PDF pipeline: read text → DOI → CrossRef → embedded info. */
+  /**
+   * Chosen file: upload it to Storage, then read it for auto-fill.
+   * Uploading here rather than at submit keeps the Server Action payload to a
+   * few strings, so file size is limited only by Storage.
+   */
   async function analyzeFile(file: File) {
     setFileName(file.name);
-    const isPdf =
-      file.type === "application/pdf" ||
-      file.name.toLowerCase().endsWith(".pdf");
-    if (!isPdf) {
+    setUploadError(null);
+
+    const invalid = validatePdf(file);
+    if (invalid) {
+      setUploadError(invalid);
       setAnalysis("idle");
+      setUploaded(null);
       return;
     }
+
+    setAnalysis("uploading");
+    // Replace a previous upload from this same session so we don't leave
+    // an unused file behind in Storage.
+    if (uploaded?.path) removeUploadedPdf(uploaded.path);
+
+    const res = await uploadPdf(file);
+    if (res.error || !res.path) {
+      setUploadError(res.error ?? "Upload failed.");
+      setAnalysis("idle");
+      setUploaded(null);
+      return;
+    }
+    setUploaded({ path: res.path, size: res.size ?? file.size, text: "" });
+
+    // Now read it locally purely to auto-fill the form. The server re-reads
+    // the stored file for the search index, so nothing large is posted here.
     setAnalysis("reading");
     try {
       const info = await extractPdfInfo(file);
@@ -181,6 +213,7 @@ export default function ResourceForm({
       }
       setAnalysis(filled ? "meta" : doiInPdf ? "doi-only" : "none");
     } catch {
+      // The file is safely uploaded; only auto-fill failed.
       setAnalysis("none");
     }
   }
@@ -285,7 +318,6 @@ export default function ResourceForm({
           </span>
           <input
             type="file"
-            name="file"
             accept="application/pdf,.pdf"
             className="hidden"
             onChange={(e) => {
@@ -298,6 +330,21 @@ export default function ResourceForm({
             }}
           />
         </label>
+        {uploaded && (
+          <>
+            <input type="hidden" name="file_path" value={uploaded.path} />
+            <input type="hidden" name="file_size" value={uploaded.size} />
+          </>
+        )}
+        {uploadError && (
+          <span className="text-xs text-primary">{uploadError}</span>
+        )}
+        {analysis === "uploading" && (
+          <span className="flex items-center gap-1.5 text-xs text-muted">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            Uploading…
+          </span>
+        )}
         {analysis === "reading" && (
           <span className="flex items-center gap-1.5 text-xs text-muted">
             <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />

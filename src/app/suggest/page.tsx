@@ -31,6 +31,8 @@ export default async function SuggestPage() {
         allowUpload={false}
         allowTags={false}
         successTitle="Suggestion submitted"
+        // Suggestions have no file attached, so "PDF" would be misleading.
+        initial={{ type: "article" }}
       />
     </div>
   );

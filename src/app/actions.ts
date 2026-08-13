@@ -13,18 +13,50 @@ export interface ResourceFormState {
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB
 
-/** Pull selectable text out of a PDF so its contents feed full-text search. */
-async function extractPdfText(file: File): Promise<string | null> {
+/** Storage paths are always "<uuid>-<safe name>", written by lib/upload.ts. */
+const FILE_PATH_RE = /^[0-9a-f-]{36}-[a-zA-Z0-9._-]+$/i;
+
+/**
+ * Read a stored PDF and pull its text out, so the contents feed the search
+ * index. The file is fetched from Storage rather than posted to this action,
+ * which keeps the request small enough for Server Action and platform body
+ * limits regardless of how large the PDF is.
+ */
+async function extractStoredPdfText(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  path: string,
+): Promise<string | null> {
   try {
+    const { data, error } = await supabase.storage
+      .from("resources")
+      .download(path);
+    if (error || !data) return null;
     const { extractText, getDocumentProxy } = await import("unpdf");
-    const buffer = new Uint8Array(await file.arrayBuffer());
+    const buffer = new Uint8Array(await data.arrayBuffer());
     const pdf = await getDocumentProxy(buffer);
     const { text } = await extractText(pdf, { mergePages: true });
     const clean = (Array.isArray(text) ? text.join("\n") : text).trim();
     return clean ? clean.slice(0, 500_000) : null;
   } catch {
-    return null; // image-only PDF, no text layer
+    return null; // image-only PDF, or unreadable
   }
+}
+
+/** Validate the uploaded-file fields the form sends after a direct upload. */
+function readUploadFields(formData: FormData): {
+  path: string | null;
+  size: number | null;
+  error?: string;
+} {
+  const path = (formData.get("file_path") as string)?.trim() || null;
+  if (!path) return { path: null, size: null };
+  if (!FILE_PATH_RE.test(path))
+    return { path: null, size: null, error: "That file could not be attached." };
+  const rawSize = Number.parseInt((formData.get("file_size") as string) ?? "", 10);
+  const size = Number.isFinite(rawSize) && rawSize > 0 ? rawSize : null;
+  if (size && size > MAX_FILE_BYTES)
+    return { path: null, size: null, error: "That file is larger than 50 MB." };
+  return { path, size };
 }
 
 const VALID_TYPES: ResourceType[] = ["pdf", "article", "book", "link"];
@@ -80,19 +112,6 @@ function parseFields(formData: FormData) {
 }
 
 /**
- * Server-side upload gate: PDFs only. The form's `accept` attribute is
- * client-side cosmetics; without this check anyone could upload an HTML
- * page to the public bucket and use it as a hosted phishing/XSS page.
- */
-function validatePdfUpload(file: File): string | null {
-  if (file.size > MAX_FILE_BYTES) return "File is larger than the 50 MB limit.";
-  const name = file.name.toLowerCase();
-  if (!name.endsWith(".pdf") || file.type !== "application/pdf")
-    return "Only PDF files can be uploaded.";
-  return null;
-}
-
-/**
  * Gate every write to signed-in faculty. Returns an error string to surface,
  * or null when the caller may proceed. Uses getUser() (verifies the JWT) not
  * getSession(), so a forged cookie can't slip through.
@@ -124,25 +143,14 @@ export async function addResource(
   const f = parseFields(formData);
   if (!f.title) return { ok: false, error: "Title is required." };
 
-  const file = formData.get("file") as File | null;
-  let filePath: string | null = null;
-  let fileSize: number | null = null;
-  let extractedText: string | null = null;
-
-  if (file && file.size > 0) {
-    const invalid = validatePdfUpload(file);
-    if (invalid) return { ok: false, error: invalid };
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const path = `${crypto.randomUUID()}-${safeName}`;
-    const { error: uploadError } = await supabase.storage
-      .from("resources")
-      .upload(path, file, { contentType: "application/pdf" });
-    if (uploadError)
-      return { ok: false, error: "Upload failed. Please try again." };
-    filePath = path;
-    fileSize = file.size;
-    extractedText = await extractPdfText(file);
-  }
+  // The browser uploaded the file straight to Storage; we get its path.
+  const upload = readUploadFields(formData);
+  if (upload.error) return { ok: false, error: upload.error };
+  const filePath = upload.path;
+  const fileSize = upload.size;
+  const extractedText = filePath
+    ? await extractStoredPdfText(supabase, filePath)
+    : null;
 
   const { data: inserted, error: insertError } = await supabase
     .from("resources")
@@ -243,20 +251,12 @@ export async function editResource(
 
   // Optional file replacement. The old file is only removed after the row
   // update succeeds, so a failed save never strands the record file-less.
-  const file = formData.get("file") as File | null;
-  let newFilePath: string | null = null;
+  const upload = readUploadFields(formData);
+  if (upload.error) return { ok: false, error: upload.error };
+  const newFilePath = upload.path;
   let oldFilePath: string | null = null;
-  if (file && file.size > 0) {
-    const invalid = validatePdfUpload(file);
-    if (invalid) return { ok: false, error: invalid };
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    newFilePath = `${crypto.randomUUID()}-${safeName}`;
-    const { error: uploadError } = await supabase.storage
-      .from("resources")
-      .upload(newFilePath, file, { contentType: "application/pdf" });
-    if (uploadError)
-      return { ok: false, error: "Upload failed. Please try again." };
 
+  if (newFilePath) {
     const { data: old } = await supabase
       .from("resources")
       .select("file_path")
@@ -265,8 +265,8 @@ export async function editResource(
     oldFilePath = old?.file_path ?? null;
 
     updates.file_path = newFilePath;
-    updates.file_size = file.size;
-    updates.extracted_text = await extractPdfText(file);
+    updates.file_size = upload.size;
+    updates.extracted_text = await extractStoredPdfText(supabase, newFilePath);
   }
 
   const { error: updateError } = await supabase

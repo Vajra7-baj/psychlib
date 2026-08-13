@@ -11,11 +11,15 @@ import {
   normalizeAuthors,
 } from "@/lib/metadata";
 import TagPicker from "@/components/TagPicker";
+import { uploadPdf } from "@/lib/upload";
 import { CheckIcon, TrashIcon, UploadIcon } from "@/components/icons";
 import type { ResourceType, Tag } from "@/lib/types";
 
 interface Row {
   file: File;
+  /** Storage path from the direct upload; null if that file failed. */
+  path: string | null;
+  size: number;
   title: string;
   authors: string;
   year: string;
@@ -24,6 +28,7 @@ interface Row {
   url: string;
   abstract: string;
   source: "doi" | "meta" | "none";
+  error?: string;
 }
 
 export default function MultiPdfImport({ tags }: { tags: Tag[] }) {
@@ -54,6 +59,8 @@ export default function MultiPdfImport({ tags }: { tags: Tag[] }) {
       const file = files[i];
       const row: Row = {
         file,
+        path: null,
+        size: file.size,
         title: "",
         authors: "",
         year: "",
@@ -63,6 +70,17 @@ export default function MultiPdfImport({ tags }: { tags: Tag[] }) {
         abstract: "",
         source: "none",
       };
+
+      // Upload straight to Storage so large PDFs aren't posted through the
+      // Server Action, which has a small body limit.
+      const up = await uploadPdf(file);
+      if (up.error || !up.path) {
+        row.error = up.error ?? "Upload failed.";
+      } else {
+        row.path = up.path;
+        row.size = up.size ?? file.size;
+      }
+
       try {
         const info = await extractPdfInfo(file);
         const doiInPdf = findDoiInText(info.text);
@@ -108,7 +126,10 @@ export default function MultiPdfImport({ tags }: { tags: Tag[] }) {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const fd = new FormData();
-      fd.set("file", r.file);
+      if (r.path) {
+        fd.set("file_path", r.path);
+        fd.set("file_size", String(r.size));
+      }
       fd.set("title", r.title);
       fd.set("authors", r.authors);
       fd.set("year", r.year);
@@ -194,18 +215,22 @@ export default function MultiPdfImport({ tags }: { tags: Tag[] }) {
                   <div className="flex items-center gap-2">
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                        r.source === "doi"
-                          ? "bg-navy-soft text-navy"
-                          : r.source === "meta"
-                            ? "bg-surface-2 text-muted"
-                            : "bg-accent-soft text-primary"
+                        r.error
+                          ? "bg-accent-soft text-primary"
+                          : r.source === "doi"
+                            ? "bg-navy-soft text-navy"
+                            : r.source === "meta"
+                              ? "bg-surface-2 text-muted"
+                              : "bg-accent-soft text-primary"
                       }`}
                     >
-                      {r.source === "doi"
-                        ? "Auto-filled"
-                        : r.source === "meta"
-                          ? "From PDF"
-                          : "Check me"}
+                      {r.error
+                        ? "Upload failed"
+                        : r.source === "doi"
+                          ? "Auto-filled"
+                          : r.source === "meta"
+                            ? "From PDF"
+                            : "Check me"}
                     </span>
                     <button
                       onClick={() => removeRow(idx)}
