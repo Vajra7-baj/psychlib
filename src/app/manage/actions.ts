@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { isPublicHttpUrl, resourceLink } from "@/lib/url";
 
 type SB = Awaited<ReturnType<typeof createClient>>;
 
@@ -121,24 +122,47 @@ export interface LinkCheckResult {
   broken: BrokenLink[];
 }
 
+/**
+ * Fetch a URL without letting it reach the host's own network.
+ *
+ * Redirects are followed by hand rather than by fetch, because a public URL
+ * is free to redirect to an internal one. Every hop is re-checked, so the
+ * link checker can't be turned into a scanner for internal services.
+ */
+async function guardedFetch(
+  url: string,
+  method: "HEAD" | "GET",
+  signal: AbortSignal,
+): Promise<Response | null> {
+  let current = url;
+  for (let hop = 0; hop < 5; hop++) {
+    if (!isPublicHttpUrl(current)) return null;
+    const res = await fetch(current, { method, redirect: "manual", signal });
+    if (res.status >= 300 && res.status < 400) {
+      const next = res.headers.get("location");
+      if (!next) return res;
+      current = new URL(next, current).href;
+      continue;
+    }
+    return res;
+  }
+  return null; // too many redirects
+}
+
 async function probe(url: string): Promise<string | null> {
   // "broken" = clearly dead: 404/410, 5xx, or unreachable. We intentionally
   // do NOT flag 401/403/405/429 — those usually mean the site blocks bots,
   // not that the link is dead (avoids false positives on journal sites).
+  if (!isPublicHttpUrl(url)) return "blocked address";
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 6000);
   try {
-    let res = await fetch(url, {
-      method: "HEAD",
-      redirect: "follow",
-      signal: controller.signal,
-    });
+    let res = await guardedFetch(url, "HEAD", controller.signal);
+    if (!res) return "unreachable";
     if (res.status === 405 || res.status === 501) {
-      res = await fetch(url, {
-        method: "GET",
-        redirect: "follow",
-        signal: controller.signal,
-      });
+      res = await guardedFetch(url, "GET", controller.signal);
+      if (!res) return "unreachable";
     }
     if (res.status === 404 || res.status === 410 || res.status >= 500)
       return String(res.status);
@@ -171,11 +195,7 @@ export async function checkLinks(
 
   const targets = (data ?? [])
     .map((r) => {
-      const url = r.url
-        ? (r.url as string)
-        : r.doi
-          ? `https://doi.org/${(r.doi as string).replace(/^https?:\/\/doi\.org\//, "")}`
-          : null;
+      const url = resourceLink(r.doi as string | null, r.url as string | null);
       return url ? { id: r.id as string, title: r.title as string, url } : null;
     })
     .filter((t): t is { id: string; title: string; url: string } => !!t);

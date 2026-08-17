@@ -12,19 +12,14 @@ import type { SearchResult } from "@/lib/types";
 
 export default function SavedPage() {
   const { map, ready, collectionOf, collections } = useBookmarks();
-  const [resources, setResources] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [fetched, setFetched] = useState<SearchResult[] | null>(null);
 
   const savedIds = [...map.keys()].join(",");
+  const hasBookmarks = savedIds.length > 0;
 
   useEffect(() => {
-    if (!ready) return;
-    const idList = savedIds ? savedIds.split(",") : [];
-    if (idList.length === 0) {
-      setResources([]);
-      setLoading(false);
-      return;
-    }
+    if (!ready || !hasBookmarks) return;
+    let active = true;
     const supabase = createClient();
     (async () => {
       const { data } = await supabase
@@ -32,12 +27,20 @@ export default function SavedPage() {
         .select(
           "id, title, authors, year, type, url, doi, abstract, file_path, created_at",
         )
-        .in("id", idList)
+        .in("id", savedIds.split(","))
         .order("created_at", { ascending: false });
-      setResources((data ?? []) as SearchResult[]);
-      setLoading(false);
+      if (active) setFetched((data ?? []) as SearchResult[]);
     })();
-  }, [savedIds, ready]);
+    return () => {
+      active = false;
+    };
+  }, [savedIds, ready, hasBookmarks]);
+
+  // Derived rather than stored: with nothing bookmarked there's nothing to
+  // wait for, so the empty state shows immediately instead of flashing
+  // "Loading" while an effect sets state.
+  const resources = hasBookmarks ? (fetched ?? []) : [];
+  const loading = ready && hasBookmarks && fetched === null;
 
   // Group resources by collection (named collections first, then uncategorized).
   const groups: { name: string | null; items: SearchResult[] }[] = [];

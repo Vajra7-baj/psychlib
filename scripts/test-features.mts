@@ -17,6 +17,13 @@ import {
   fetchCrossref,
   extractPdfInfo,
 } from "../src/lib/metadata.js";
+import {
+  safeHttpUrl,
+  doiUrl,
+  resourceLink,
+  isPublicHttpUrl,
+  isBlockedHost,
+} from "../src/lib/url.js";
 
 const URL_ = "https://gdeqohgyqoolbpyaewox.supabase.co";
 const KEY =
@@ -177,6 +184,32 @@ ER  - `;
   check("Finds the DOI printed in the PDF", findDoiInText(info.text) === "10.1037/edu0000123", String(findDoiInText(info.text)));
   check("Reads the PDF's embedded title", info.docTitle === "Executive Function and ADHD in Schools", info.docTitle ?? "none");
   check("Reads the PDF's embedded author", normalizeAuthors(info.docAuthor) === "Carrasco, Kelly", info.docAuthor ?? "none");
+
+  // ----------------------------------------------------------- URL safety
+  section("URL safety");
+  check("Blocks javascript: URLs", safeHttpUrl("javascript:alert(1)") === null);
+  check("Blocks data: URLs", safeHttpUrl("data:text/html,<script>x</script>") === null);
+  check("Blocks vbscript: URLs", safeHttpUrl("vbscript:msgbox(1)") === null);
+  check("Allows https", safeHttpUrl("https://example.org/a") === "https://example.org/a");
+  check("Allows http", !!safeHttpUrl("http://example.org"));
+  check("Null on garbage input", safeHttpUrl("not a url") === null);
+  check("DOI builds a doi.org link", doiUrl("10.1/x") === "https://doi.org/10.1/x");
+  check("DOI strips an existing doi.org prefix", doiUrl("https://doi.org/10.1/x") === "https://doi.org/10.1/x");
+  check("Resource link prefers DOI", resourceLink("10.1/x", "https://other.org") === "https://doi.org/10.1/x");
+  check("Resource link falls back to URL", resourceLink(null, "https://other.org") === "https://other.org/");
+  check("Resource link rejects unsafe URL", resourceLink(null, "javascript:alert(1)") === null);
+
+  // Server-side fetch guard (SSRF)
+  check("Blocks localhost", !isPublicHttpUrl("http://localhost/x"));
+  check("Blocks 127.0.0.1", !isPublicHttpUrl("http://127.0.0.1:3000/"));
+  check("Blocks cloud metadata address", !isPublicHttpUrl("http://169.254.169.254/latest/meta-data/"));
+  check("Blocks 10.x private range", !isPublicHttpUrl("http://10.0.0.5/"));
+  check("Blocks 192.168.x private range", !isPublicHttpUrl("http://192.168.1.1/"));
+  check("Blocks 172.16-31 private range", !isPublicHttpUrl("http://172.20.0.1/"));
+  check("Allows a normal public host", isPublicHttpUrl("https://doi.org/10.1/x"));
+  check("Blocks IPv6 loopback", !isPublicHttpUrl("http://[::1]/"));
+  check("Blocks IPv4-mapped IPv6 loopback", isBlockedHost("::ffff:127.0.0.1"));
+  check("Blocks .internal hostnames", !isPublicHttpUrl("http://db.internal/"));
 
   // ------------------------------------------------------------- data + policy
   section("Database and access rules");

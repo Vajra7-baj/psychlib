@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { checkLinks, type BrokenLink } from "@/app/manage/actions";
 import { CheckIcon, ExternalIcon } from "@/components/icons";
+import { safeHttpUrl } from "@/lib/url";
 
 export default function LinkChecker() {
   const [status, setStatus] = useState<"idle" | "checking" | "done">("idle");
@@ -95,15 +96,17 @@ export default function LinkChecker() {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <a
-                      href={b.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label="Open link"
-                      className="rounded-md p-1.5 text-muted transition hover:bg-surface-2"
-                    >
-                      <ExternalIcon className="h-4 w-4" />
-                    </a>
+                    {safeHttpUrl(b.url) && (
+                      <a
+                        href={safeHttpUrl(b.url)!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Open link"
+                        className="rounded-md p-1.5 text-muted transition hover:bg-surface-2"
+                      >
+                        <ExternalIcon className="h-4 w-4" />
+                      </a>
+                    )}
                     <Link
                       href={`/resource/${b.id}/edit`}
                       className="rounded-md border border-border-strong px-2.5 py-1 text-xs font-bold transition hover:bg-surface-2"

@@ -5,6 +5,7 @@ import { getPendingResources } from "@/lib/queries";
 import { RESOURCE_TYPE_LABELS } from "@/lib/types";
 import { CheckIcon, TypeIcon } from "@/components/icons";
 import PendingActions from "@/components/PendingActions";
+import { resourceLink } from "@/lib/url";
 
 export const dynamic = "force-dynamic";
 
@@ -41,9 +42,9 @@ export default async function PendingPage() {
       ) : (
         <ul className="flex flex-col gap-4">
           {pending.map((r) => {
-            const link = r.doi
-              ? `https://doi.org/${r.doi.replace(/^https?:\/\/doi\.org\//, "")}`
-              : r.url;
+            // Sanitized on render as well as on write: a suggestion's link
+            // comes from a student, so it never goes straight into an href.
+            const link = resourceLink(r.doi, r.url);
             return (
               <li
                 key={r.id}

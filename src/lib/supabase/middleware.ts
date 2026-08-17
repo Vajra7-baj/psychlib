@@ -32,7 +32,13 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  const isPublic = path.startsWith("/login") || path.startsWith("/auth");
+  // Match whole segments. A loose startsWith would also make any future
+  // route beginning with those letters (say /authors) public by accident.
+  const isPublic =
+    path === "/login" ||
+    path.startsWith("/login/") ||
+    path === "/auth" ||
+    path.startsWith("/auth/");
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
@@ -41,7 +47,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Already signed in but sitting on /login → send home.
-  if (user && path.startsWith("/login")) {
+  if (user && path === "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);

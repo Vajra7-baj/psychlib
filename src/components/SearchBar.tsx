@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { SearchIcon } from "@/components/icons";
 
@@ -8,14 +8,20 @@ export default function SearchBar() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const [value, setValue] = useState(params.get("q") ?? "");
   const [isPending, startTransition] = useTransition();
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep the box in sync if the URL changes elsewhere (e.g. clearing filters).
-  useEffect(() => {
-    setValue(params.get("q") ?? "");
-  }, [params]);
+  // The box holds its own text while typing, but follows the URL when the
+  // query changes elsewhere (clearing filters, back button). Comparing to the
+  // previous URL value during render is React's documented way to do this;
+  // an effect would re-render a second time on every navigation.
+  const urlQuery = params.get("q") ?? "";
+  const [value, setValue] = useState(urlQuery);
+  const [lastUrlQuery, setLastUrlQuery] = useState(urlQuery);
+  if (urlQuery !== lastUrlQuery) {
+    setLastUrlQuery(urlQuery);
+    setValue(urlQuery);
+  }
 
   function push(next: string) {
     const sp = new URLSearchParams(params.toString());

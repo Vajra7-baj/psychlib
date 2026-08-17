@@ -22,6 +22,9 @@ const FILE_PATH_RE = /^[0-9a-f-]{36}-[a-zA-Z0-9._-]+$/i;
  * which keeps the request small enough for Server Action and platform body
  * limits regardless of how large the PDF is.
  */
+/** Above this, parsing costs more server memory and time than it's worth. */
+const MAX_EXTRACT_BYTES = 25 * 1024 * 1024;
+
 async function extractStoredPdfText(
   supabase: Awaited<ReturnType<typeof createClient>>,
   path: string,
@@ -31,6 +34,8 @@ async function extractStoredPdfText(
       .from("resources")
       .download(path);
     if (error || !data) return null;
+    // The file is still stored and readable; only the search text is skipped.
+    if (data.size > MAX_EXTRACT_BYTES) return null;
     const { extractText, getDocumentProxy } = await import("unpdf");
     const buffer = new Uint8Array(await data.arrayBuffer());
     const pdf = await getDocumentProxy(buffer);
@@ -77,11 +82,21 @@ function sanitizeHttpUrl(raw: string | null): string | null {
   }
 }
 
+// Field ceilings. Anyone signed in can submit a suggestion, so text fields
+// are bounded to keep a single submission from bloating the table.
+const MAX_TITLE = 500;
+const MAX_TEXT = 20_000;
+const MAX_DOI = 255;
+const MAX_AUTHORS = 50;
+
+const cap = (s: string | null | undefined, n: number): string | null =>
+  s?.trim().slice(0, n) || null;
+
 /** Shared metadata parsing for add + edit. */
 function parseFields(formData: FormData) {
   const rawType = (formData.get("type") as string) || "pdf";
   return {
-    title: (formData.get("title") as string)?.trim().slice(0, 500),
+    title: cap(formData.get("title") as string, MAX_TITLE),
     type: (VALID_TYPES.includes(rawType as ResourceType)
       ? rawType
       : "pdf") as ResourceType,
@@ -90,8 +105,9 @@ function parseFields(formData: FormData) {
     authors:
       (formData.get("authors") as string)
         ?.split(/[;\n]/)
-        .map((a) => a.trim())
-        .filter(Boolean) ?? [],
+        .map((a) => a.trim().slice(0, 200))
+        .filter(Boolean)
+        .slice(0, MAX_AUTHORS) ?? [],
     year: (() => {
       const raw = (formData.get("year") as string)?.trim();
       const n = raw ? Number.parseInt(raw, 10) : NaN;
@@ -99,15 +115,20 @@ function parseFields(formData: FormData) {
     })(),
     url: sanitizeHttpUrl((formData.get("url") as string)?.trim() || null),
     doi:
-      (formData.get("doi") as string)
-        ?.trim()
-        .replace(/^https?:\/\/(dx\.)?doi\.org\//i, "") || null,
-    abstract: (formData.get("abstract") as string)?.trim() || null,
-    notes: (formData.get("notes") as string)?.trim() || null,
+      cap(
+        (formData.get("doi") as string)?.replace(
+          /^https?:\/\/(dx\.)?doi\.org\//i,
+          "",
+        ),
+        MAX_DOI,
+      ) || null,
+    abstract: cap(formData.get("abstract") as string, MAX_TEXT),
+    notes: cap(formData.get("notes") as string, MAX_TEXT),
     tagIds: formData
       .getAll("tags")
       .map(String)
-      .filter((t) => UUID_RE.test(t)),
+      .filter((t) => UUID_RE.test(t))
+      .slice(0, 50),
   };
 }
 

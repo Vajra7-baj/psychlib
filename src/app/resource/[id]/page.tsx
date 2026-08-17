@@ -22,23 +22,9 @@ import DeleteResourceButton from "@/components/DeleteResourceButton";
 import CitationBlock from "@/components/CitationBlock";
 import PdfPreview from "@/components/PdfPreview";
 import { getCurrentUser } from "@/lib/auth";
+import { doiUrl, safeHttpUrl } from "@/lib/url";
 
 export const dynamic = "force-dynamic";
-
-/**
- * Defense-in-depth against stored XSS: even though the server action only
- * accepts http(s) URLs, rows written before that check (or directly to the
- * DB) must still never render a javascript:/data: href.
- */
-function safeHttpUrl(raw: string | null): string | null {
-  if (!raw) return null;
-  try {
-    const u = new URL(raw);
-    return u.protocol === "http:" || u.protocol === "https:" ? u.href : null;
-  } catch {
-    return null;
-  }
-}
 
 export default async function ResourcePage({
   params,
@@ -130,9 +116,9 @@ export default async function ResourcePage({
             <ExternalIcon className="h-4 w-4" />
           </a>
         )}
-        {resource.doi && (
+        {doiUrl(resource.doi) && (
           <a
-            href={`https://doi.org/${resource.doi.replace(/^https?:\/\/doi\.org\//, "")}`}
+            href={doiUrl(resource.doi)!}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-4 py-2.5 text-sm font-bold transition-colors hover:bg-surface-2"
