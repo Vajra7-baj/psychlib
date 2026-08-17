@@ -3,15 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { ResourceType } from "@/lib/types";
+import {
+  MAX_FILE_BYTES,
+  MAX_FILE_LABEL,
+  type ResourceType,
+} from "@/lib/types";
 
 export interface ResourceFormState {
   ok: boolean;
   error?: string;
   resourceId?: string;
 }
-
-const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB
 
 /** Storage paths are always "<uuid>-<safe name>", written by lib/upload.ts. */
 const FILE_PATH_RE = /^[0-9a-f-]{36}-[a-zA-Z0-9._-]+$/i;
@@ -22,9 +24,6 @@ const FILE_PATH_RE = /^[0-9a-f-]{36}-[a-zA-Z0-9._-]+$/i;
  * which keeps the request small enough for Server Action and platform body
  * limits regardless of how large the PDF is.
  */
-/** Above this, parsing costs more server memory and time than it's worth. */
-const MAX_EXTRACT_BYTES = 25 * 1024 * 1024;
-
 async function extractStoredPdfText(
   supabase: Awaited<ReturnType<typeof createClient>>,
   path: string,
@@ -34,8 +33,9 @@ async function extractStoredPdfText(
       .from("resources")
       .download(path);
     if (error || !data) return null;
-    // The file is still stored and readable; only the search text is skipped.
-    if (data.size > MAX_EXTRACT_BYTES) return null;
+    // Same ceiling as the upload check, so anything stored is indexable.
+    // A larger file here would mean it arrived some other way.
+    if (data.size > MAX_FILE_BYTES) return null;
     const { extractText, getDocumentProxy } = await import("unpdf");
     const buffer = new Uint8Array(await data.arrayBuffer());
     const pdf = await getDocumentProxy(buffer);
@@ -60,7 +60,11 @@ function readUploadFields(formData: FormData): {
   const rawSize = Number.parseInt((formData.get("file_size") as string) ?? "", 10);
   const size = Number.isFinite(rawSize) && rawSize > 0 ? rawSize : null;
   if (size && size > MAX_FILE_BYTES)
-    return { path: null, size: null, error: "That file is larger than 50 MB." };
+    return {
+      path: null,
+      size: null,
+      error: `That file is larger than ${MAX_FILE_LABEL}.`,
+    };
   return { path, size };
 }
 

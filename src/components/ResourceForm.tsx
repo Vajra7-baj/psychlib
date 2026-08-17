@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import Link from "next/link";
 import type { ResourceFormState } from "@/app/actions";
 import type { ResourceType, Tag, TagCategory } from "@/lib/types";
-import { RESOURCE_TYPE_LABELS } from "@/lib/types";
+import { MAX_FILE_LABEL, RESOURCE_TYPE_LABELS } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { CheckIcon, UploadIcon } from "@/components/icons";
 import {
@@ -304,7 +304,7 @@ export default function ResourceForm({
       {allowUpload && (
       <Field
         label={isEdit ? "Replace file (PDF)" : "Upload a PDF"}
-        hint="Drop in a PDF and we’ll auto-fill the details below. Max 50 MB."
+        hint={`Drop in a PDF and we’ll auto-fill the details below. Max ${MAX_FILE_LABEL}.`}
       >
         <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong bg-surface-2/50 px-4 py-8 text-center transition hover:border-primary hover:bg-accent-soft/40">
           <span className="grid h-11 w-11 place-items-center rounded-full bg-surface text-primary shadow-sm">

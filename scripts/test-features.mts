@@ -24,6 +24,7 @@ import {
   isPublicHttpUrl,
   isBlockedHost,
 } from "../src/lib/url.js";
+import { MAX_FILE_BYTES, MAX_FILE_LABEL } from "../src/lib/types.js";
 
 const URL_ = "https://gdeqohgyqoolbpyaewox.supabase.co";
 const KEY =
@@ -184,6 +185,12 @@ ER  - `;
   check("Finds the DOI printed in the PDF", findDoiInText(info.text) === "10.1037/edu0000123", String(findDoiInText(info.text)));
   check("Reads the PDF's embedded title", info.docTitle === "Executive Function and ADHD in Schools", info.docTitle ?? "none");
   check("Reads the PDF's embedded author", normalizeAuthors(info.docAuthor) === "Carrasco, Kelly", info.docAuthor ?? "none");
+
+  // ----------------------------------------------------------- upload limit
+  section("Upload limit");
+  check("Limit is 25 MB", MAX_FILE_BYTES === 25 * 1024 * 1024, String(MAX_FILE_BYTES));
+  check("Label matches the byte value", MAX_FILE_LABEL === `${MAX_FILE_BYTES / 1024 / 1024} MB`, MAX_FILE_LABEL);
+  check("Nothing that uploads is too big to index", MAX_FILE_BYTES <= 25 * 1024 * 1024);
 
   // ----------------------------------------------------------- URL safety
   section("URL safety");

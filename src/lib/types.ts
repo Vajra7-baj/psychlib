@@ -1,3 +1,16 @@
+/*
+  Upload ceiling, defined once and shared by the browser check, the server
+  check, and the text extractor. Keeping those on one number matters: a file
+  larger than the extractor handles would still upload and be downloadable,
+  but its contents would silently be missing from search. Equal limits mean
+  anything that uploads is searchable.
+
+  25 MB covers journal articles (typically 1-5 MB) and most scanned chapters,
+  while leaving room in the project's 1 GB storage quota.
+*/
+export const MAX_FILE_BYTES = 25 * 1024 * 1024;
+export const MAX_FILE_LABEL = "25 MB";
+
 export type ResourceType = "pdf" | "article" | "book" | "link";
 
 export type TagCategory = "course" | "nasp_domain" | "population" | "topic";

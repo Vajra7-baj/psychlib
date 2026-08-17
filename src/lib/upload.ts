@@ -1,17 +1,16 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { MAX_FILE_BYTES, MAX_FILE_LABEL } from "@/lib/types";
 
 /*
   Files go straight from the browser to Supabase Storage rather than through a
   Server Action. Server Actions cap the request body at 1MB by default, and
   Vercel caps serverless request bodies around 4.5MB, so routing a real journal
-  PDF through the server would fail well below the 50MB the interface offers.
-  Uploading directly avoids both ceilings; the action then receives only the
-  stored path. Storage policies still restrict writes to faculty.
+  PDF through the server would fail on most of them. Uploading directly avoids
+  both ceilings; the action then receives only the stored path. Storage
+  policies still restrict writes to faculty.
 */
-
-export const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB
 
 export interface UploadResult {
   path?: string;
@@ -21,7 +20,8 @@ export interface UploadResult {
 
 /** Reject anything that isn't a PDF before it leaves the browser. */
 export function validatePdf(file: File): string | null {
-  if (file.size > MAX_FILE_BYTES) return "That file is larger than 50 MB.";
+  if (file.size > MAX_FILE_BYTES)
+    return `That file is larger than ${MAX_FILE_LABEL}.`;
   const isPdf =
     file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
   if (!isPdf) return "Only PDF files can be uploaded.";
