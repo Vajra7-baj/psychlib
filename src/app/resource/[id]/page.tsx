@@ -131,14 +131,23 @@ export default async function ResourcePage({
 
       {tags.length > 0 && (
         <div className="mt-6 flex flex-wrap gap-1.5">
-          {tags.map((t) => (
-            <span
-              key={t.id}
-              className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted"
-            >
-              {t.name}
-            </span>
-          ))}
+          {tags.map((t) =>
+            t.category === "topic" ? (
+              <span
+                key={t.id}
+                className="rounded-full bg-navy-soft px-3 py-1 text-xs font-medium text-navy"
+              >
+                #{t.name}
+              </span>
+            ) : (
+              <span
+                key={t.id}
+                className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted"
+              >
+                {t.name}
+              </span>
+            ),
+          )}
         </div>
       )}
 

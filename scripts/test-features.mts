@@ -25,6 +25,7 @@ import {
   isBlockedHost,
 } from "../src/lib/url.js";
 import { MAX_FILE_BYTES, MAX_FILE_LABEL } from "../src/lib/types.js";
+import { isAllowedEmail } from "../src/lib/allowed-email.js";
 
 const URL_ = "https://gdeqohgyqoolbpyaewox.supabase.co";
 const KEY =
@@ -185,6 +186,16 @@ ER  - `;
   check("Finds the DOI printed in the PDF", findDoiInText(info.text) === "10.1037/edu0000123", String(findDoiInText(info.text)));
   check("Reads the PDF's embedded title", info.docTitle === "Executive Function and ADHD in Schools", info.docTitle ?? "none");
   check("Reads the PDF's embedded author", normalizeAuthors(info.docAuthor) === "Carrasco, Kelly", info.docAuthor ?? "none");
+
+  // ------------------------------------------------------------ sign-in rules
+  section("Who may hold an account");
+  check("Accepts a student address", isAllowedEmail("akaur27@mail.fresnostate.edu"));
+  check("Accepts the shorter campus domain", isAllowedEmail("someone@fresnostate.edu"));
+  check("Ignores case and spacing", isAllowedEmail("  Someone@Mail.FresnoState.edu "));
+  check("Rejects an outside address", !isAllowedEmail("someone@gmail.com"));
+  check("Rejects a lookalike domain", !isAllowedEmail("someone@mail.fresnostate.edu.evil.com"));
+  check("Rejects a malformed address", !isAllowedEmail("not-an-email"));
+  check("Accepts an allowlisted admin", isAllowedEmail("arnavbajra1@gmail.com"));
 
   // ----------------------------------------------------------- upload limit
   section("Upload limit");

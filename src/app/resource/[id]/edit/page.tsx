@@ -58,7 +58,13 @@ export default async function EditResourcePage({
           doi: resource.doi ?? "",
           abstract: resource.abstract ?? "",
           notes: resource.notes ?? "",
-          tagIds,
+          // Course tags stay as checkboxes; topics come back as editable chips.
+          tagIds: tagIds.filter((id) =>
+            tags.some((t) => t.id === id && t.category === "course"),
+          ),
+          topics: tags
+            .filter((t) => t.category === "topic" && tagIds.includes(t.id))
+            .map((t) => t.name),
           fileName: fileName ?? undefined,
         }}
       />

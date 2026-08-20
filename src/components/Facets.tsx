@@ -8,6 +8,7 @@ import { FilterIcon } from "@/components/icons";
 
 const CATEGORY_ORDER: { key: TagCategory; label: string }[] = [
   { key: "course", label: "Course" },
+  { key: "topic", label: "Topic" },
 ];
 
 export default function Facets({ tags }: { tags: Tag[] }) {
@@ -106,7 +107,9 @@ export default function Facets({ tags }: { tags: Tag[] }) {
                         onChange={() => toggleTag(tag.id)}
                         className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--navy)]"
                       />
-                      <span className="leading-snug">{tag.name}</span>
+                      <span className="leading-snug">
+                        {key === "topic" ? `#${tag.name}` : tag.name}
+                      </span>
                     </label>
                   </li>
                 );

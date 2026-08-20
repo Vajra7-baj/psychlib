@@ -136,6 +136,64 @@ function parseFields(formData: FormData) {
   };
 }
 
+const MAX_TOPICS = 25;
+
+/** "Executive Function!" -> "executive-function" */
+function slugifyTopic(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/^#+/, "") // people type a leading hash out of habit
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
+/** Split the topic field into clean, de-duplicated names. */
+function parseTopics(raw: string | null): { name: string; slug: string }[] {
+  if (!raw) return [];
+  const seen = new Set<string>();
+  const out: { name: string; slug: string }[] = [];
+  for (const piece of raw.split(/[,\n]/)) {
+    const name = piece.trim().replace(/^#+/, "").trim().slice(0, 60);
+    const slug = slugifyTopic(name);
+    if (!name || !slug || seen.has(slug)) continue;
+    seen.add(slug);
+    out.push({ name, slug });
+    if (out.length >= MAX_TOPICS) break;
+  }
+  return out;
+}
+
+/**
+ * Turn typed topic names into tag ids, creating any that don't exist yet.
+ * Matching is by slug, so "Executive Function" and "executive function"
+ * land on the same tag instead of splitting the vocabulary. Only reached
+ * from faculty-gated actions.
+ */
+async function resolveTopicTags(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  raw: string | null,
+): Promise<string[]> {
+  const topics = parseTopics(raw);
+  if (!topics.length) return [];
+
+  // Create the ones that are new; existing slugs are left untouched.
+  await supabase.from("tags").upsert(
+    topics.map((t) => ({ name: t.name, slug: t.slug, category: "topic" })),
+    { onConflict: "slug", ignoreDuplicates: true },
+  );
+
+  const { data } = await supabase
+    .from("tags")
+    .select("id")
+    .in(
+      "slug",
+      topics.map((t) => t.slug),
+    );
+  return (data ?? []).map((t) => t.id as string);
+}
+
 /**
  * Gate every write to signed-in faculty. Returns an error string to surface,
  * or null when the caller may proceed. Uses getUser() (verifies the JWT) not
@@ -200,10 +258,15 @@ export async function addResource(
     return { ok: false, error: "Could not save the resource. Please try again." };
   }
 
-  if (f.tagIds.length) {
+  const topicIds = await resolveTopicTags(
+    supabase,
+    formData.get("topics") as string | null,
+  );
+  const allTagIds = [...new Set([...f.tagIds, ...topicIds])];
+  if (allTagIds.length) {
     await supabase
       .from("resource_tags")
-      .insert(f.tagIds.map((tag_id) => ({ resource_id: inserted.id, tag_id })));
+      .insert(allTagIds.map((tag_id) => ({ resource_id: inserted.id, tag_id })));
   }
 
   revalidatePath("/");
@@ -308,11 +371,16 @@ export async function editResource(
     await supabase.storage.from("resources").remove([oldFilePath]);
 
   // Replace tag links.
+  const topicIds = await resolveTopicTags(
+    supabase,
+    formData.get("topics") as string | null,
+  );
+  const allTagIds = [...new Set([...f.tagIds, ...topicIds])];
   await supabase.from("resource_tags").delete().eq("resource_id", id);
-  if (f.tagIds.length) {
+  if (allTagIds.length) {
     await supabase
       .from("resource_tags")
-      .insert(f.tagIds.map((tag_id) => ({ resource_id: id, tag_id })));
+      .insert(allTagIds.map((tag_id) => ({ resource_id: id, tag_id })));
   }
 
   revalidatePath("/");

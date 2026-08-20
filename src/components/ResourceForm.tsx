@@ -16,6 +16,7 @@ import {
   type ResourceMeta,
 } from "@/lib/metadata";
 import { removeUploadedPdf, uploadPdf, validatePdf } from "@/lib/upload";
+import TopicTagInput from "@/components/TopicTagInput";
 
 const initialState: ResourceFormState = { ok: false };
 
@@ -34,6 +35,7 @@ export interface ResourceFormInitial {
   abstract?: string;
   notes?: string;
   tagIds?: string[];
+  topics?: string[];
   fileName?: string;
 }
 
@@ -46,6 +48,7 @@ export default function ResourceForm({
   allowTags = true,
   successTitle,
 }: {
+  /** Course tags to choose from, plus existing topics used for suggestions. */
   tags: Tag[];
   action: (
     prev: ResourceFormState,
@@ -59,6 +62,9 @@ export default function ResourceForm({
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
   const isEdit = !!initial?.id;
+  const existingTopics = tags
+    .filter((t) => t.category === "topic")
+    .map((t) => t.name);
 
   const [title, setTitle] = useState(initial?.title ?? "");
   const [type, setType] = useState<ResourceType>(initial?.type ?? "pdf");
@@ -528,6 +534,20 @@ export default function ResourceForm({
             </div>
           );
         })}
+
+        <div className="flex flex-col gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+            Topics
+          </span>
+          <TopicTagInput
+            existing={existingTopics}
+            initial={initial?.topics ?? []}
+          />
+          <span className="text-xs text-muted">
+            Anything useful for finding this later. These become filters in
+            search.
+          </span>
+        </div>
       </div>
       )}
 
